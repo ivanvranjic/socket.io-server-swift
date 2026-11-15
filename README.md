@@ -6,8 +6,8 @@ Works with the official JS client and `socket.io-client-swift`. This package is 
 
 | Package | Framework |
 |---|---|
-| [`socket.io-server-swift-vapor`](../socket.io-server-swift-vapor) | Vapor 4 |
-| [`socket.io-server-swift-hummingbird`](../socket.io-server-swift-hummingbird) | Hummingbird 2 (needs Swift 6.2 / macOS 14) |
+| [`socket.io-server-swift-vapor`](https://github.com/ivanvranjic/socket.io-server-swift-vapor) | Vapor 4 |
+| [`socket.io-server-swift-hummingbird`](https://github.com/ivanvranjic/socket.io-server-swift-hummingbird) | Hummingbird 2 (needs Swift 6.2 / macOS 14) |
 
 Each adapter is its own package so that its framework's platform requirements don't leak into the others.
 
