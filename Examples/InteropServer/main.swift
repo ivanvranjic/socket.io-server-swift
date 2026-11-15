@@ -1,4 +1,4 @@
-import SocketIO
+import SocketIOVapor
 import Vapor
 
 // Minimal server used by Tests/Interop/run.sh and as a usage example.

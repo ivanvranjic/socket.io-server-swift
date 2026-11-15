@@ -1,15 +1,38 @@
 import Foundation
 import Logging
 import NIOConcurrencyHelpers
-import Vapor
+import NIOHTTP1
 
-/// One Engine.IO connection (a single WebSocket), which can host one socket per namespace.
-final class EngineConnection: @unchecked Sendable {
+/// The underlying duplex text channel, normally a WebSocket. Adapters implement this and feed
+/// incoming frames to ``SocketIOConnection/receive(text:)``.
+public protocol SocketIOTransport: AnyObject, Sendable {
+    /// Sends one text frame. Must preserve call order.
+    func send(_ text: String)
+    /// Closes the channel. Must be safe to call more than once.
+    func close()
+}
+
+/// The HTTP upgrade request that opened a transport.
+public struct SocketIOUpgradeRequest: Sendable {
+    public var headers: HTTPHeaders
+    public var url: String
+    public var query: [String: String]
+    public var remoteAddress: String?
+
+    public init(headers: HTTPHeaders = [:], url: String = "/socket.io/", query: [String: String] = [:], remoteAddress: String? = nil) {
+        self.headers = headers
+        self.url = url
+        self.query = query
+        self.remoteAddress = remoteAddress
+    }
+}
+
+/// One Engine.IO connection (a single transport), which can host one socket per namespace.
+public final class SocketIOConnection: @unchecked Sendable {
     let sid: String
-    private let ws: WebSocket
+    private let transport: SocketIOTransport
     private let server: SocketIOServer
-    private let application: Application
-    private let handshakeBase: (headers: HTTPHeaders, url: URI, query: [String: String], address: String?)
+    private let request: SocketIOUpgradeRequest
     private let logger: Logger
     private var configuration: SocketIOConfiguration { server.configuration }
 
@@ -30,17 +53,12 @@ final class EngineConnection: @unchecked Sendable {
     private let incoming: AsyncStream<Incoming>
     private let incomingContinuation: AsyncStream<Incoming>.Continuation
 
-    init(ws: WebSocket, req: Request, server: SocketIOServer) {
+    init(transport: SocketIOTransport, request: SocketIOUpgradeRequest, server: SocketIOServer) {
         self.sid = Self.makeId()
-        self.ws = ws
+        self.transport = transport
         self.server = server
-        self.application = req.application
-        self.logger = req.application.logger
-        var query: [String: String] = [:]
-        for item in URLComponents(string: req.url.string)?.queryItems ?? [] {
-            query[item.name] = item.value ?? ""
-        }
-        self.handshakeBase = (req.headers, req.url, query, req.remoteAddress?.description)
+        self.request = request
+        self.logger = server.logger
         (incoming, incomingContinuation) = AsyncStream.makeStream()
     }
 
@@ -59,13 +77,6 @@ final class EngineConnection: @unchecked Sendable {
         """
         send(EnginePacket.open + open)
 
-        // The WebSocket's callbacks own the connection; `finish` clears them to break the cycle.
-        ws.onText { [self] _, text in handle(text: text) }
-        ws.onBinary { [self] _, _ in
-            logger.warning("Socket.IO \(sid): binary packets are not supported")
-        }
-        ws.onClose.whenComplete { [self] _ in finish(reason: .transportClose) }
-
         let consumer = Task { [weak self] in
             guard let self else { return }
             for await packet in self.incoming {
@@ -83,11 +94,27 @@ final class EngineConnection: @unchecked Sendable {
 
     func send(_ text: String) {
         guard !state.withLockedValue({ $0.closed }) else { return }
-        ws.send(text)
+        transport.send(text)
     }
 
     func close() {
-        _ = ws.close()
+        finish(reason: .transportClose)
+    }
+
+    // MARK: Transport input
+
+    /// Feed every text frame received on the transport here.
+    public func receive(text: String) {
+        handle(text: text)
+    }
+
+    /// Feed binary frames here. They are not supported and are only logged.
+    public func receiveBinary() {
+        logger.warning("Socket.IO \(sid): binary packets are not supported")
+    }
+
+    /// Call when the transport has closed (for any reason).
+    public func transportDidClose() {
         finish(reason: .transportClose)
     }
 
@@ -103,11 +130,7 @@ final class EngineConnection: @unchecked Sendable {
         guard !(sockets.isEmpty && tasks.isEmpty) else { return }
         incomingContinuation.finish()
         for t in tasks { t.cancel() }
-        ws.eventLoop.execute { [ws] in
-            ws.onText { _, _ in }
-            ws.onBinary { _, _ in }
-        }
-        if reason == .pingTimeout { _ = ws.close() }
+        transport.close()
         Task {
             for socket in sockets { await socket.didDisconnect(reason) }
         }
@@ -223,10 +246,10 @@ final class EngineConnection: @unchecked Sendable {
             return
         }
         let handshake = SocketIOHandshake(
-            headers: handshakeBase.headers,
-            url: handshakeBase.url,
-            query: handshakeBase.query,
-            remoteAddress: handshakeBase.address,
+            headers: request.headers,
+            url: request.url,
+            query: request.query,
+            remoteAddress: request.remoteAddress,
             auth: auth
         )
         let socket = SocketIOSocket(
@@ -234,7 +257,7 @@ final class EngineConnection: @unchecked Sendable {
             namespace: namespace,
             handshake: handshake,
             connection: self,
-            application: application,
+            server: server,
             configuration: configuration
         )
 

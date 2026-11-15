@@ -1,5 +1,5 @@
 import XCTest
-@testable import SocketIO
+@testable import SocketIOCore
 
 final class PacketTests: XCTestCase {
     func testDecodeDefaultNamespaceEvent() {

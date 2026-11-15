@@ -1,21 +1,26 @@
-# vapor-socketio
+# socket.io-server-swift
 
-A server-side [Socket.IO](https://socket.io) v4 implementation for [Vapor](https://vapor.codes) 4 (Engine.IO v4 over WebSocket).
+A server-side [Socket.IO](https://socket.io) v4 implementation in Swift (Engine.IO v4 over WebSocket).
 Works with the official JS client and `socket.io-client-swift`.
+
+| Product | Depends on | Use it for |
+|---|---|---|
+| `SocketIOCore` | swift-nio, swift-log | The protocol, namespaces, rooms, acks. Transport-agnostic: implement `SocketIOTransport` to plug in any WebSocket stack. |
+| `SocketIOVapor` | `SocketIOCore`, Vapor 4 | Mounts `/socket.io` on a Vapor app. Re-exports `SocketIOCore`. |
 
 ## Usage
 
 ```swift
 // Package.swift
-.package(path: "../vapor-socketio")            // or a git URL
-.product(name: "SocketIO", package: "vapor-socketio")
+.package(path: "../socket.io-server-swift")    // or a git URL
+.product(name: "SocketIOVapor", package: "socket.io-server-swift")
 ```
 
 ```swift
-import SocketIO
+import SocketIOVapor
 
 func configure(_ app: Application) async throws {
-    let io = app.socketIO.configure()           // mounts /socket.io
+    let io = app.socketIO.configure()           // mounts /socket.io (path: "..." to change)
 
     io.use { socket in                          // auth middleware
         guard let token = socket.handshake.auth?["token"]?.stringValue else {
@@ -49,6 +54,12 @@ Server → client with ack: `let reply = try await socket.emitWithAck("question"
 
 Events are handled in order per connection. Handlers are `async`, so a slow handler delays that client's next event (not other clients').
 
+## Other frameworks
+
+Create `SocketIOServer()`, and for each accepted WebSocket call `server.accept(transport:request:)`. Forward incoming
+text frames to `connection.receive(text:)` and call `connection.transportDidClose()` when the socket closes.
+`Sources/SocketIOVapor` is a ~100 line reference adapter.
+
 ## Clients (verified: socket.io-client 4.8.1 and socket.io-client-swift 16.1.1)
 
 Only the WebSocket transport is implemented, so clients must skip HTTP long-polling:
@@ -62,4 +73,4 @@ HTTP long-polling, binary attachments (binary events are logged and dropped), co
 
 ## Tests
 
-`swift test` runs protocol unit tests. `Tests/Interop/run.sh` starts `Examples/InteropServer` and drives it with the official JS client, the official Swift client (`Tests/InteropSwiftClient`), and a ping-timeout check (needs node; `--no-swift` skips the Swift client).
+`swift test` runs protocol and in-memory transport tests. `Tests/Interop/run.sh` starts `Examples/InteropServer` and drives it with the official JS client, the official Swift client (`Tests/InteropSwiftClient`), and a ping-timeout check (needs node; `--no-swift` skips the Swift client).

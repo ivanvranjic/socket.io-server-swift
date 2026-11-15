@@ -1,12 +1,12 @@
 import Foundation
 import Logging
 import NIOConcurrencyHelpers
-import Vapor
+import NIOHTTP1
 
 /// Information captured from the HTTP upgrade request and the client's CONNECT packet.
 public struct SocketIOHandshake: Sendable {
     public let headers: HTTPHeaders
-    public let url: URI
+    public let url: String
     /// Query parameters of the upgrade request, including the Engine.IO ones (`EIO`, `transport`).
     public let query: [String: String]
     public let remoteAddress: String?
@@ -18,10 +18,10 @@ public final class SocketIOSocket: @unchecked Sendable {
     public let id: String
     public let namespace: SocketIONamespace
     public let handshake: SocketIOHandshake
-    public let application: Application
+    public let server: SocketIOServer
     public let logger: Logger
     let configuration: SocketIOConfiguration
-    private let connection: EngineConnection
+    private let connection: SocketIOConnection
 
     private struct State {
         var handlers: [String: [SocketIOEventHandler]] = [:]
@@ -37,17 +37,17 @@ public final class SocketIOSocket: @unchecked Sendable {
         id: String,
         namespace: SocketIONamespace,
         handshake: SocketIOHandshake,
-        connection: EngineConnection,
-        application: Application,
+        connection: SocketIOConnection,
+        server: SocketIOServer,
         configuration: SocketIOConfiguration
     ) {
         self.id = id
         self.namespace = namespace
         self.handshake = handshake
         self.connection = connection
-        self.application = application
+        self.server = server
         self.configuration = configuration
-        self.logger = application.logger
+        self.logger = server.logger
     }
 
     public var isConnected: Bool { state.withLockedValue { $0.connected } }

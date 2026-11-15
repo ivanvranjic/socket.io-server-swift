@@ -1,8 +1,6 @@
 import Foundation
 
 public struct SocketIOConfiguration: @unchecked Sendable {
-    /// Route the Engine.IO endpoint is mounted on. Clients use `/socket.io/` by default.
-    public var path: String = "socket.io"
     /// How often the server pings each client, in seconds.
     public var pingInterval: TimeInterval = 25
     /// How long the server waits for a pong before closing the connection, in seconds.
