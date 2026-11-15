@@ -5,7 +5,10 @@ import Vapor
 
 let app = try await Application.make(.detect())
 
-let io = app.socketIO.configure()
+var config = SocketIOConfiguration()
+if let v = Environment.get("PING_INTERVAL").flatMap(Double.init) { config.pingInterval = v }
+if let v = Environment.get("PING_TIMEOUT").flatMap(Double.init) { config.pingTimeout = v }
+let io = app.socketIO.configure(config)
 
 // Authenticate with the `auth` object the client sent.
 io.use { socket in

@@ -49,7 +49,7 @@ Server → client with ack: `let reply = try await socket.emitWithAck("question"
 
 Events are handled in order per connection. Handlers are `async`, so a slow handler delays that client's next event (not other clients').
 
-## Clients
+## Clients (verified: socket.io-client 4.8.1 and socket.io-client-swift 16.1.1)
 
 Only the WebSocket transport is implemented, so clients must skip HTTP long-polling:
 
@@ -62,4 +62,4 @@ HTTP long-polling, binary attachments (binary events are logged and dropped), co
 
 ## Tests
 
-`swift test` runs protocol unit tests. `Tests/Interop/run.sh` starts `Examples/InteropServer` and drives it with the real `socket.io-client` (needs node).
+`swift test` runs protocol unit tests. `Tests/Interop/run.sh` starts `Examples/InteropServer` and drives it with the official JS client, the official Swift client (`Tests/InteropSwiftClient`), and a ping-timeout check (needs node; `--no-swift` skips the Swift client).
