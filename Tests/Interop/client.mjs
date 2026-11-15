@@ -71,6 +71,21 @@ d.emit("kick");
 const [reason] = await within(once(d, "disconnect"), "disconnect");
 assert.equal(reason, "io server disconnect");
 
+// 9. protocol violations close the connection (raw websocket)
+import WebSocket from "ws";
+const raw = (frames) =>
+  new Promise((res) => {
+    const ws = new WebSocket(url.replace("http", "ws") + "/socket.io/?EIO=4&transport=websocket");
+    ws.on("open", () => {});
+    ws.once("message", () => frames.forEach((f) => ws.send(f)));
+    ws.on("close", () => res("closed"));
+    setTimeout(() => res("open"), 1000);
+  });
+assert.equal(await raw(['42["x"]']), "closed", "event before CONNECT must close");
+assert.equal(await raw(["40", "42[]"]), "closed", "empty event array must close");
+assert.equal(await raw(["40", '42{"a":1}']), "closed", "non-array event must close");
+assert.equal(await raw(["40", '42["ok"]']), "open", "valid event must not close");
+
 for (const s of [b, c, n]) s.close();
 console.log("interop OK");
 process.exit(0);

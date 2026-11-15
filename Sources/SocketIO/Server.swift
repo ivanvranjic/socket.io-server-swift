@@ -60,8 +60,9 @@ public final class SocketIOServer: @unchecked Sendable {
             path,
             maxFrameSize: WebSocketMaxFrameSize(integerLiteral: configuration.maxPayload),
             shouldUpgrade: { req in
-                let query = req.url.query ?? ""
-                guard query.contains("EIO=4"), query.contains("transport=websocket") else {
+                let items = URLComponents(string: req.url.string)?.queryItems ?? []
+                func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
+                guard value("EIO") == "4", value("transport") == "websocket" else {
                     throw Abort(.badRequest, reason: "Only Engine.IO v4 over WebSocket is supported. Set transports: [\"websocket\"] on the client.")
                 }
                 return [:]

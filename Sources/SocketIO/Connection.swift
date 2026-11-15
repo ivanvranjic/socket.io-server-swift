@@ -17,13 +17,14 @@ final class EngineConnection: @unchecked Sendable {
         var sockets: [String: SocketIOSocket] = [:]  // by namespace name
         var closed = false
         var pongReceived = true
+        var sawConnect = false
         var tasks: [Task<Void, Never>] = []
     }
     private let state = NIOLockedValueBox(State())
 
     private enum Incoming {
         case connect(namespace: String, auth: JSONValue?)
-        case event(namespace: String, id: Int?, payload: String)
+        case event(namespace: String, id: Int?, args: [JSONValue])
         case disconnect(namespace: String)
     }
     private let incoming: AsyncStream<Incoming>
@@ -164,6 +165,16 @@ final class EngineConnection: @unchecked Sendable {
             close()
             return
         }
+        // Spec: the first packet must be CONNECT, otherwise the server closes the connection.
+        let valid = state.withLockedValue { s -> Bool in
+            if packet.type == .connect { s.sawConnect = true }
+            return s.sawConnect
+        }
+        guard valid else {
+            logger.warning("Socket.IO \(sid): first packet was not CONNECT, closing")
+            close()
+            return
+        }
         switch packet.type {
         case .connect:
             let auth = packet.payload.isEmpty ? nil : configuration.decodeAny(packet.payload)
@@ -171,7 +182,14 @@ final class EngineConnection: @unchecked Sendable {
         case .disconnect:
             incomingContinuation.yield(.disconnect(namespace: packet.namespace))
         case .event:
-            incomingContinuation.yield(.event(namespace: packet.namespace, id: packet.id, payload: packet.payload))
+            // Spec: an EVENT payload must be a non-empty array starting with the event name.
+            guard let array = configuration.decodeArray(packet.payload),
+                  array.first?.stringValue != nil else {
+                logger.warning("Socket.IO \(sid): invalid event payload, closing")
+                close()
+                return
+            }
+            incomingContinuation.yield(.event(namespace: packet.namespace, id: packet.id, args: array))
         case .ack:
             // Handled immediately so a handler awaiting `emitWithAck` can't block its own ack.
             guard let id = packet.id, let socket = socket(for: packet.namespace) else { return }
@@ -193,8 +211,8 @@ final class EngineConnection: @unchecked Sendable {
             await connect(namespace: nsp, auth: auth)
         case .disconnect(let nsp):
             await socket(for: nsp)?.didDisconnect(.clientNamespaceDisconnect)
-        case .event(let nsp, let id, let payload):
-            await dispatch(namespace: nsp, id: id, payload: payload)
+        case .event(let nsp, let id, let args):
+            await dispatch(namespace: nsp, id: id, array: args)
         }
     }
 
@@ -249,9 +267,8 @@ final class EngineConnection: @unchecked Sendable {
         send(EnginePacket.message + Packet(type: .connectError, namespace: namespace, payload: payload).encoded())
     }
 
-    private func dispatch(namespace: String, id: Int?, payload: String) async {
+    private func dispatch(namespace: String, id: Int?, array: [JSONValue]) async {
         guard let socket = socket(for: namespace),
-              let array = configuration.decodeArray(payload),
               let name = array.first?.stringValue else { return }
         let event = SocketIOEvent(
             socket: socket,
