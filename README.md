@@ -8,6 +8,8 @@ Works with the official JS client and `socket.io-client-swift`.
 | `SocketIOCore` | swift-nio, swift-log | The protocol, namespaces, rooms, acks. Transport-agnostic: implement `SocketIOTransport` to plug in any WebSocket stack. |
 | `SocketIOVapor` | `SocketIOCore`, Vapor 4 | Mounts `/socket.io` on a Vapor app. Re-exports `SocketIOCore`. |
 
+A Hummingbird 2 adapter lives in the sibling package [`socket.io-server-swift-hummingbird`](../socket.io-server-swift-hummingbird) (it needs Swift 6.2 / macOS 14, so it can't share this package).
+
 ## Usage
 
 ```swift
